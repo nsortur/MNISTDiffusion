@@ -110,13 +110,17 @@ def main():
 
     # save the images into opt_results folder
     with torch.no_grad():
+        import torchvision.utils as vutils
         os.makedirs("opt_results", exist_ok=True)
-        for i, opt_images in enumerate(opt_images_step):
-            for j, img in enumerate(opt_images):
-                img = img.cpu().numpy()
-                img = img.transpose(1, 2, 0)
-                img = (img * 255).astype(np.uint8)
-                cv2.imwrite(f"opt_results/opt_images_{i}_{j}.png", img)
+        # opt_images_step: list of [n_samples, C, H, W], len = iterations
+        # Stack into [iterations, n_samples, C, H, W]
+        grid = torch.stack(opt_images_step, dim=0)  # [iterations, n_samples, C, H, W]
+        # Reshape to [iterations * n_samples, C, H, W] for make_grid
+        grid = grid.view(-1, *grid.shape[2:])  # [iterations * n_samples, C, H, W]
+        # Make a grid: rows = iterations, cols = n_samples
+        grid_img = vutils.make_grid(grid, nrow=opt_images_step[0].shape[0], padding=2, pad_value=255, normalize=False)
+        # Save as a single image
+        vutils.save_image(grid_img, "opt_results/opt_images_grid.png")
             
         
 def get_grad_eval(ims, reward_model, device='cuda'):    

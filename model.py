@@ -240,6 +240,7 @@ class MNISTDiffusion(nn.Module):
         
         # This works:
         # python ggdm_optim.py --iterations 2 --weights /home/nsortur/GGDMOptim/MNISTDiffusion/dilation_results/steps_00046900.pt --rew_model /home/nsortur/GGDMOptim/mnist_thickness/thickness_predictor.pth --target 100 --guidance 0.01 --n_samples 4 --seed 123456
+        # python ggdm_optim.py --iterations 4 --weights /home/nsortur/GGDMOptim/MNISTDiffusion/dilation_results/steps_00046900.pt --rew_model /home/nsortur/GGDMOptim/mnist_thickness/thickness_predictor.pth --target 100 --guidance 0.01 --n_samples 8 --seed 12345
         
         # copy from grad guided sdpipeline
         # x_0_pred = (x_t - sqrt_one_minus_alpha_cumprod_t * pred) / sqrt_alpha_cumprod_t
@@ -270,6 +271,7 @@ class MNISTDiffusion(nn.Module):
             std=0.0
         
 
+        # the noise is the randomness in the diffusion process and how we sample
         return mean+std*noise
     
     def set_guidance(self, guidance):
