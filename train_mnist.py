@@ -1,9 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.datasets import MNIST
-from torchvision import transforms 
 from torchvision.utils import save_image
-from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 from model import MNISTDiffusion
@@ -11,44 +8,7 @@ from utils import ExponentialMovingAverage
 import os
 import math
 import argparse
-from continuous_dilation import RandomGrayscaleDilation
-
-
-class MNISTNormalizedThicknessDataset(MNIST):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-    def __getitem__(self, index):
-        img, _ = super().__getitem__(index)
-        thickness = img.sum()
-        
-        normalize_transform = transforms.Normalize([0.5],[0.5])
-        img = normalize_transform(img)
-        
-        return img, thickness
-
-
-def create_mnist_dataloaders(batch_size,image_size=28,num_workers=4, dilation=True):
-    
-    preprocess=transforms.Compose([transforms.Resize(image_size),\
-                                    transforms.ToTensor(),\
-                                    *( [RandomGrayscaleDilation(kernel_bounds=(1, 4))] if dilation else [] ),
-                                    ])
-
-    train_dataset=MNISTNormalizedThicknessDataset(root="./mnist_data",\
-                        train=True,\
-                        download=True,\
-                        transform=preprocess
-                        )
-    test_dataset=MNISTNormalizedThicknessDataset(root="./mnist_data",\
-                        train=False,\
-                        download=True,\
-                        transform=preprocess
-                        )
-
-    return DataLoader(train_dataset,batch_size=batch_size,shuffle=True,num_workers=num_workers),\
-            DataLoader(test_dataset,batch_size=batch_size,shuffle=True,num_workers=num_workers)
-
+from dataset import create_mnist_dataloaders
 
 
 def parse_args():
@@ -73,7 +33,7 @@ def parse_args():
 
 
 def main(args):
-    save_dir = "dilation_results" if args.dilation else "results"
+    save_dir = "dilation_results_1_3" if args.dilation else "results"
     os.makedirs(save_dir,exist_ok=True)
     device="cpu" if args.cpu else "cuda"
     train_dataloader,test_dataloader=create_mnist_dataloaders(batch_size=args.batch_size,image_size=28,dilation=args.dilation)
@@ -81,7 +41,7 @@ def main(args):
                 image_size=28,
                 in_channels=1,
                 base_dim=args.model_base_dim,
-                dim_mults=[2,4]).to(device)
+                dim_mults=[4, 8]).to(device)
 
     #torchvision ema setting
     #https://github.com/pytorch/vision/blob/main/references/classification/train.py#L317
@@ -124,7 +84,7 @@ def main(args):
         torch.save(ckpt,"{}/steps_{:0>8}.pt".format(save_dir,global_steps))
 
         model_ema.eval()
-        samples=model_ema.module.sampling(args.n_samples,clipped_reverse_diffusion=not args.no_clip,device=device)
+        samples, _ = model_ema.module.sampling(args.n_samples,clipped_reverse_diffusion=not args.no_clip,device=device)
         save_image(samples,"{}/steps_{:0>8}.png".format(save_dir,global_steps),nrow=int(math.sqrt(args.n_samples)))
 
 if __name__=="__main__":

@@ -1,1 +1,4 @@
 .vscode
+*.pt
+*.png
+mnist_data/

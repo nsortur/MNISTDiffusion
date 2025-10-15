@@ -6,6 +6,8 @@ from reward_model import ThicknessPredictor
 import cv2
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+import pickle
 
 # python ggdm_optim.py --iterations 2 --weights /home/nsortur/GGDMOptim/MNISTDiffusion/results/steps_00046900.pt --rew_model /home/nsortur/GGDMOptim/mnist_thickness/thickness_predictor.pth --target 200 --guidance 2 --n_samples 2
 
@@ -68,7 +70,7 @@ def main():
                 image_size=28,
                 in_channels=1,
                 base_dim=64,
-                dim_mults=[2,4]).to(device)
+                dim_mults=[4,8]).to(device)
 
     # these params dont matter for sampling
     ckpt_raw = torch.load(args.weights)['model_ema']
@@ -76,7 +78,9 @@ def main():
     del ckpt[""]
     model.load_state_dict(ckpt)
     
+    model.eval()
     model.set_linear_reward_model(is_init=True, batch_size=args.n_samples, height=28, width=28)
+    model.set_reward_variance(is_init=True, batch_size=args.n_samples, height=28, width=28)
 
     guidances = [args.guidance] * args.iterations
     targets = [args.target] * args.iterations
@@ -91,23 +95,33 @@ def main():
         
     # afterwards, do for each digit class - right now, only doing one
     opt_images_step = []
+    rewards_step = []
+    rewards_std_step = []
+    samples_unnormalized_step = []
     for i in range(args.iterations):
         torch.manual_seed(args.seed)
         model.set_target(targets[i])
         model.set_guidance(guidances[i])
         target_t = torch.tensor([args.target], device=device).repeat(args.n_samples, 1)
-        samples_normalized, samples = model.sampling(args.n_samples,clipped_reverse_diffusion=True,device=device, target=target_t, init_x=init_x)
+        samples_normalized, samples = model.sampling(args.n_samples,clipped_reverse_diffusion=True,device=device, target=target_t)
         
         
         ### query reward gradient with regard to the generated images
-        grads, biases, rewards = get_grad_eval(samples, reward_model)
+        grads, biases, rewards, rewards_std = get_grad_eval(samples, reward_model)
         grads = grads.clone().detach()
         biases = biases.clone().detach()    
         model.set_linear_reward_model(gradients = grads, biases = biases, batch_size=args.n_samples, height=28, width=28)
-        rewards = rewards.detach().cpu().numpy()
         
+        # variances = rewards_std.clone().detach()**2
+        # model.set_reward_variance(variances=variances)
+        
+        rewards = rewards.detach().cpu().numpy().mean()
+        print("rewards:", rewards)
+        rewards_step.append(rewards)
+        rewards_std_step.append(rewards_std.detach().cpu().numpy().mean())
         opt_images_step.append(samples_normalized)
-
+        samples_unnormalized_step.append(samples)
+    
     # save the images into opt_results folder
     with torch.no_grad():
         import torchvision.utils as vutils
@@ -121,14 +135,29 @@ def main():
         grid_img = vutils.make_grid(grid, nrow=opt_images_step[0].shape[0], padding=2, pad_value=255, normalize=False)
         # Save as a single image
         vutils.save_image(grid_img, "opt_results/opt_images_grid.png")
-            
-        
+    
+    # save the rewards into reward_plots folder
+    os.makedirs("reward_plots", exist_ok=True)
+    plt.plot(rewards_step)
+    plt.savefig(f"reward_plots/rewards.png")
+    plt.close()
+    
+    plt.plot(rewards_std_step)
+    plt.savefig(f"reward_plots/rewards_std.png")
+    plt.close()
+    
+    # save unnormalized images for evaluation as pickle
+    path = "/home/nsortur/GGDMOptim/MNISTDiffusion/metrics/generated_data"
+    os.makedirs(path, exist_ok=True)
+    with open(f"{path}/samples_unnormalized_step.pkl", "wb") as f:
+        pickle.dump(samples_unnormalized_step, f)
+    
+    
 def get_grad_eval(ims, reward_model, device='cuda'):    
     ims = ims.to(device)
     ims.requires_grad = True
 
     rewards, rewards_std = reward_model(ims)
-    print("rewards", rewards)
     
     rewards_squeezed = rewards.squeeze()
     rewards_sum = rewards.sum()
@@ -148,7 +177,7 @@ def get_grad_eval(ims, reward_model, device='cuda'):
     # print("biases", biases)
     # print("biases shape", biases.shape)
     # print('\n')
-    return grads, biases, rewards
+    return grads, biases, rewards, rewards_std
 
 if __name__ == "__main__":
     main()

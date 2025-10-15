@@ -159,7 +159,8 @@ class MNISTDiffusion(nn.Module):
     #         std=0.0
 
     #     return mean+std*noise 
-
+    
+    
 
     def _reverse_diffusion_with_clip(self,x_t,t,noise,device,batch_size,target=None): 
         '''
@@ -222,7 +223,7 @@ class MNISTDiffusion(nn.Module):
             l2_error = 0.5 * torch.nn.MSELoss()(out, target)
             if step_match:
                 print("l2 error", l2_error)
-                print("target", target)
+                # print("target", target)
                 print("out", out)
                 print('\n')
             gradient_guidance = torch.autograd.grad(l2_error, x_t)[0]
@@ -233,6 +234,8 @@ class MNISTDiffusion(nn.Module):
             
             # add guidance to noise
             pred += sqrt_one_minus_alpha_cumprod_t * self.target_guidance * gradient_guidance
+            # sqrt_one_minus_alpha_cumprod_t doesnt seem to do anything but keeping
+            # pred += self.target_guidance * gradient_guidance
         
         
         x_0_pred=(x_t-torch.sqrt(1. - alpha_t_cumprod)*pred) / sqrt_alpha_cumprod_t
@@ -297,6 +300,18 @@ class MNISTDiffusion(nn.Module):
         # print("biases", self.biases)
         # print("biases shape", self.biases.shape)
         # print('\n')
+        
+        
+    def set_reward_variance(self, variances = None, is_init = False, batch_size = 1, height = 28, width = 28):
+        """Stores the variance from the reward model."""
+        if is_init:
+            self.reward_variances = torch.zeros(batch_size,)
+        else:
+            self.reward_variances = variances
+        
+        self.reward_variances.requires_grad_(False)
+        self.reward_variances = self.reward_variances.to(self.device)
+
         
     def set_target(self, target):
         self.target = target

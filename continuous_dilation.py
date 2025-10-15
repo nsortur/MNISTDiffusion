@@ -5,8 +5,14 @@ import random
 
 # Define a custom PyTorch-like transform class
 class RandomGrayscaleDilation(object):
-    def __init__(self, kernel_bounds=(1, 4)):
+    def __init__(self, kernel_bounds=(1, 4), seed=None):
         self.kernel_bounds = kernel_bounds
+        self.seed = seed
+        # Create a separate random state for this transform instance
+        if self.seed is not None:
+            self.rng = random.Random(self.seed)
+        else:
+            self.rng = random.Random()
 
     def __call__(self, img):
         # Add a batch dimension if the image doesn't have one (C, H, W -> 1, C, H, W)
@@ -15,12 +21,20 @@ class RandomGrayscaleDilation(object):
         
         # Apply the grayscale dilation. Kornia's dilation function expects a tensor
         # of shape (B, C, H, W).
-        kernel_size = random.randint(self.kernel_bounds[0], self.kernel_bounds[1])
+        kernel_size = self.rng.randint(self.kernel_bounds[0], self.kernel_bounds[1] + 1)
         kernel = torch.ones(kernel_size, kernel_size)
         dilated_img = km.dilation(img, kernel.to(img.device))
         
         # Remove the batch dimension if it was added
         return dilated_img.squeeze(0)
+
+    def set_seed(self, seed):
+        """Update the seed for this transform instance"""
+        self.seed = seed
+        if self.seed is not None:
+            self.rng = random.Random(self.seed)
+        else:
+            self.rng = random.Random()
 
 
 if __name__ == "__main__":
